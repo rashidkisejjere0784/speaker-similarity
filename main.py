@@ -6,7 +6,7 @@ import io
 from resemblyzer import VoiceEncoder, preprocess_wav
 from scipy.spatial.distance import cosine
 
-# --- Page Configuration ---
+# Page Configuration
 st.set_page_config(
     page_title="Audio Similarity Configurator",
     page_icon="🎵",
@@ -15,8 +15,6 @@ st.set_page_config(
 
 encoder = VoiceEncoder()
 
-# --- Feature Extraction Function ---
-# This function is cached to avoid re-computation on every interaction.
 @st.cache_data
 def extract_features(audio_bytes):
     """
@@ -26,7 +24,7 @@ def extract_features(audio_bytes):
         audio_bytes (bytes): The byte content of the audio file.
 
     Returns:
-        np.ndarray: A 256-dimensional embedding vector representing the speaker.
+        np.ndarray: An embedding vector representing the speaker.
     """
     try:
         # Use a file-like object for librosa
@@ -49,8 +47,6 @@ def extract_features(audio_bytes):
         print(f"Error extracting features: {e}")
         return None
 
-# --- Session State Initialization ---
-# This ensures that our variables persist across user interactions.
 if 'base_audio_features' not in st.session_state:
     st.session_state.base_audio_features = None
     st.session_state.base_audio_name = None
@@ -86,7 +82,7 @@ if base_audio_file is not None:
         st.session_state.similarity_score = None
         st.sidebar.success(f"Base audio '{st.session_state.base_audio_name}' loaded.")
 
-# 2. Comparison Audio Uploader (only if base is loaded)
+# 2. Comparison Audio Uploader only if base is loaded
 if st.session_state.base_audio_features is not None:
     st.sidebar.subheader("2. Upload Comparison Audio")
     comparison_audio_file = st.sidebar.file_uploader(
@@ -116,7 +112,7 @@ threshold = st.sidebar.slider(
     "Set the threshold for similarity (0 to 1)", 
     min_value=0.0, 
     max_value=1.0, 
-    value=0.90,  # A reasonable default
+    value=0.90,
     step=0.01
 )
 
@@ -161,9 +157,9 @@ if st.session_state.similarity_score is not None:
 
     # Compare with the threshold and display the result
     if score >= threshold:
-        st.success(f"✅ Similar (Score ≥ {threshold})")
+        st.success(f"Similar (Score ≥ {threshold})")
     else:
-        st.error(f"❌ Not Similar (Score < {threshold})")
+        st.error(f"Not Similar (Score < {threshold})")
     
 elif st.session_state.base_audio_name and not st.session_state.comparison_audio_name:
     st.info("Now upload a comparison audio to see the similarity score.")
