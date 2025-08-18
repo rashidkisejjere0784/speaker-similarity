@@ -1,10 +1,38 @@
 import streamlit as st
 import librosa
 import numpy as np
-from sklearn.metrics.pairwise import cosine_similarity
-import io
-from resemblyzer import VoiceEncoder, preprocess_wav
 from scipy.spatial.distance import cosine
+import io
+import time
+from resemblyzer import VoiceEncoder, preprocess_wav
+
+# Password check function
+def check_password():
+    """Returns `True` if the user has entered the correct password."""
+
+    def password_entered():
+        """Checks whether a password entered by the user is correct."""
+        if st.session_state["password"] == st.secrets["password"]:
+            st.session_state["password_correct"] = True
+            del st.session_state["password"] # don't store the password
+        else:
+            st.session_state["password_correct"] = False
+    
+    # Check if the password is correct in session state
+    if st.session_state.get("password_correct", False):
+        return True
+
+    # Show input for password.
+    st.text_input(
+        "Password", type="password", on_change=password_entered, key="password"
+    )
+    if "password_correct" in st.session_state and not st.session_state.password_correct:
+        st.error("Password incorrect")
+    return False
+
+if not check_password():
+    st.stop()
+
 
 # Page Configuration
 st.set_page_config(
@@ -29,24 +57,16 @@ def extract_features(audio_bytes):
     try:
         # Use a file-like object for librosa
         audio_stream = io.BytesIO(audio_bytes)
-
-        # Load the waveform using librosa (returns audio and sampling rate)
-        wav, sr = librosa.load(audio_stream, sr=None)  # keep original sample rate
-
-        # Convert to Resemblyzer-compatible format
+        wav, sr = librosa.load(audio_stream, sr=None)
         wav = preprocess_wav(wav, source_sr=sr)
-
         # Extract speaker embedding
         embedding = encoder.embed_utterance(wav)
-
         return embedding
-
     except Exception as e:
-        import traceback
-        traceback.print_exc()
-        print(f"Error extracting features: {e}")
+        st.error(f"Error extracting features: {e}")
         return None
 
+# Initialize session state variables
 if 'base_audio_features' not in st.session_state:
     st.session_state.base_audio_features = None
     st.session_state.base_audio_name = None
@@ -56,14 +76,15 @@ if 'comparison_audio_features' not in st.session_state:
     st.session_state.comparison_audio_features = None
     st.session_state.comparison_audio_name = None
     st.session_state.comparison_audio_bytes = None
-    
+
 if 'similarity_score' not in st.session_state:
     st.session_state.similarity_score = None
+    st.session_state.calculation_time_ms = None
 
-# --- UI Sidebar ---
+#  UI Sidebar
 st.sidebar.header("Configuration")
 
-# 1. Base Audio Uploader
+# Base Audio uploader
 st.sidebar.subheader("1. Upload Base Audio")
 base_audio_file = st.sidebar.file_uploader(
     "This is the reference audio.", type=["wav", "mp3", "flac", "m4a"]
@@ -71,18 +92,19 @@ base_audio_file = st.sidebar.file_uploader(
 
 # Process the base audio file when uploaded
 if base_audio_file is not None:
-    # Check if a new file has been uploaded
     if base_audio_file.name != st.session_state.base_audio_name:
         st.session_state.base_audio_name = base_audio_file.name
         st.session_state.base_audio_bytes = base_audio_file.getvalue()
         with st.spinner("Analyzing base audio..."):
             st.session_state.base_audio_features = extract_features(st.session_state.base_audio_bytes)
-        # Reset comparison when base changes
+        # Reset comparison state when a new base audio is uploaded
         st.session_state.comparison_audio_features = None
+        st.session_state.comparison_audio_name = None
         st.session_state.similarity_score = None
+        st.session_state.calculation_time_ms = None
         st.sidebar.success(f"Base audio '{st.session_state.base_audio_name}' loaded.")
 
-# 2. Comparison Audio Uploader only if base is loaded
+# Comparison Audio Uploader only if base is loaded
 if st.session_state.base_audio_features is not None:
     st.sidebar.subheader("2. Upload Comparison Audio")
     comparison_audio_file = st.sidebar.file_uploader(
@@ -101,22 +123,31 @@ if st.session_state.base_audio_features is not None:
             if st.session_state.comparison_audio_features is not None:
                 base_feat = st.session_state.base_audio_features
                 comp_feat = st.session_state.comparison_audio_features
-                score = 1 - cosine(base_feat, comp_feat)  # Cosine similarity
+
+                # ADD TIMER
+                start_time = time.perf_counter()
+                # Cosine Similarity calculation
+                score = 1 - cosine(base_feat, comp_feat)
+                end_time = time.perf_counter()
+                # END TIMER
+
                 st.session_state.similarity_score = score
+                st.session_state.calculation_time_ms = (end_time - start_time) * 1000
             else:
                 st.session_state.similarity_score = None
+                st.session_state.calculation_time_ms = None
 
-# 3. Threshold Slider
+# Threshold Slider
 st.sidebar.subheader("3. Adjust Similarity Threshold")
 threshold = st.sidebar.slider(
-    "Set the threshold for similarity (0 to 1)", 
-    min_value=0.0, 
-    max_value=1.0, 
+    "Set the threshold for similarity (0 to 1)",
+    min_value=0.0,
+    max_value=1.0,
     value=0.90,
     step=0.01
 )
 
-# --- Main Application Body ---
+#  Main Application Body
 st.title("🎵 Audio Similarity Configurator")
 st.markdown(
     "This tool helps you find the optimal **similarity threshold** between two audio files. "
@@ -147,20 +178,27 @@ with col2:
 
 st.divider()
 
-# --- Results Section ---
+#  Results Section
 st.header("Results")
 if st.session_state.similarity_score is not None:
     score = st.session_state.similarity_score
-    
-    # Display the metric
-    st.metric(label="Cosine Similarity Score", value=f"{score:.4f}")
+    calc_time = st.session_state.calculation_time_ms
+
+    # Create two columns for the metrics
+    res_col1, res_col2 = st.columns(2)
+    with res_col1:
+        st.metric(label="Cosine Similarity Score", value=f"{score:.4f}")
+    with res_col2:
+        # DISPLAY TIMER
+        st.metric(label="Calculation Time", value=f"{calc_time:.2f} ms")
+
 
     # Compare with the threshold and display the result
     if score >= threshold:
         st.success(f"Similar (Score ≥ {threshold})")
     else:
         st.error(f"Not Similar (Score < {threshold})")
-    
+
 elif st.session_state.base_audio_name and not st.session_state.comparison_audio_name:
     st.info("Now upload a comparison audio to see the similarity score.")
 else:
