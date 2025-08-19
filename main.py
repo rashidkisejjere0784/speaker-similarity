@@ -4,7 +4,8 @@ import numpy as np
 from scipy.spatial.distance import cosine
 import io
 import time
-from resemblyzer import VoiceEncoder, preprocess_wav
+from utils.model import extract_embedding, cosine_similarity
+import torch
 
 # Password check function
 def check_password():
@@ -41,8 +42,6 @@ st.set_page_config(
     layout="wide"
 )
 
-encoder = VoiceEncoder()
-
 @st.cache_data
 def extract_features(audio_bytes):
     """
@@ -58,9 +57,9 @@ def extract_features(audio_bytes):
         # Use a file-like object for librosa
         audio_stream = io.BytesIO(audio_bytes)
         wav, sr = librosa.load(audio_stream, sr=None)
-        wav = preprocess_wav(wav, source_sr=sr)
+        wav = torch.tensor(wav)
         # Extract speaker embedding
-        embedding = encoder.embed_utterance(wav)
+        embedding = extract_embedding(wav)
         return embedding
     except Exception as e:
         st.error(f"Error extracting features: {e}")
@@ -127,7 +126,7 @@ if st.session_state.base_audio_features is not None:
                 # ADD TIMER
                 start_time = time.perf_counter()
                 # Cosine Similarity calculation
-                score = 1 - cosine(base_feat, comp_feat)
+                score = cosine_similarity(base_feat, comp_feat)
                 end_time = time.perf_counter()
                 # END TIMER
 
