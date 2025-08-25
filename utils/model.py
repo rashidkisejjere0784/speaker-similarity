@@ -1,46 +1,55 @@
 import torch
-import librosa
 import torch.nn.functional as F
-from transformers import Wav2Vec2Model, Wav2Vec2Processor
+import librosa
 import numpy as np
+from transformers import WavLMModel, Wav2Vec2FeatureExtractor
+
+feature_extractor = Wav2Vec2FeatureExtractor.from_pretrained("microsoft/wavlm-base-plus")
+model = WavLMModel.from_pretrained("microsoft/wavlm-base-plus")
+model.eval()
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
+model.to(device)
 
-processor = Wav2Vec2Processor.from_pretrained("facebook/wav2vec2-base-960h")
-model = Wav2Vec2Model.from_pretrained("facebook/wav2vec2-base-960h", output_hidden_states=True).to(device)
-
-def extract_embedding(audio, sr=16000):
-    # Resample if needed
+def extract_embedding(waveform, sr=16000, chunk_size=0.5, overlap=0.25):
     if sr != 16000:
-        audio = librosa.resample(audio, orig_sr=sr, target_sr=16000)
+        waveform = librosa.resample(waveform, orig_sr=sr, target_sr=16000)
+        sr = 16000
 
-    # Tokenize input
-    inputs = processor(
-        audio,
-        sampling_rate=16000,
-        return_tensors="pt",
-        padding=True
-    )
+    chunk_len = int(chunk_size * sr)
+    step = int((chunk_size - overlap) * sr)
 
-    input_values = inputs.input_values.to(device)
+    if len(waveform) < chunk_len:
+        pad = chunk_len - len(waveform)
+        waveform = np.pad(waveform, (0, pad), mode="constant")
 
-    with torch.inference_mode():
-        # Forward pass
-        outputs = model(input_values, output_hidden_states=True)
+    embeddings = []
+    for start in range(0, max(1, len(waveform) - chunk_len + 1), step):
+        chunk = waveform[start:start + chunk_len]
 
-        # Last hidden state: [batch, time, dim]
-        last_hidden_state = outputs.last_hidden_state.squeeze(0)  
+        inputs = feature_extractor(
+            chunk,
+            sampling_rate=16000,
+            return_tensors="pt",
+            padding=True
+        ).to(device)
 
-        # Mean pooling over time dimension
-        embedding = last_hidden_state.mean(dim=0)
+        with torch.inference_mode():
+            outputs = model(**inputs)
+            hidden_states = outputs.last_hidden_state.squeeze(0)
 
-    return embedding.cpu()
+            mean = hidden_states.mean(dim=0)
+            std = hidden_states.std(dim=0)
+            pooled = torch.cat([mean, std])
 
+            embeddings.append(pooled.cpu())
+
+    final_embedding = torch.stack(embeddings).mean(dim=0)
+    final_embedding = F.normalize(final_embedding, dim=0)
+
+    return final_embedding
 
 def cosine_similarity(emb1, emb2):
-    """
-    Calculates the cosine similarity between two embedding tensors.
-    """
-    emb1 = F.normalize(emb1, p=2, dim=0)
-    emb2 = F.normalize(emb2, p=2, dim=0)
-    return torch.dot(emb1, emb2).item()
+    emb1 = emb1.unsqueeze(0)
+    emb2 = emb2.unsqueeze(0)
+    return torch.mm(emb1, emb2.T).item()
