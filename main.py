@@ -149,7 +149,7 @@ threshold = st.sidebar.slider(
     "Set the threshold for similarity (0 to 1)",
     min_value=0.0,
     max_value=1.0,
-    value=0.90,
+    value=0.89,
     step=0.01
 )
 
