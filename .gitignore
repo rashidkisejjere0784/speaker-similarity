@@ -10,3 +10,7 @@ wheels/
 .venv
 uv.lock
 .streamlit
+*.wav
+*.png
+extend_wav.py
+augmented_audio_*

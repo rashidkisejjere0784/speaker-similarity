@@ -4,7 +4,7 @@ import numpy as np
 from scipy.spatial.distance import cosine
 import io
 import time
-from utils.model import extract_embedding, cosine_similarity
+from utils.model import extract_embedding, cosine_similarity, extend_audio_and_save
 import torch
 
 # Password check function
@@ -57,11 +57,18 @@ def extract_features(audio_bytes):
         # Use a file-like object for librosa
         audio_stream = io.BytesIO(audio_bytes)
         wav, sr = librosa.load(audio_stream, sr=None)
+
+        # extend audio to 5 seconds and save
+        if len(wav) < sr * 5:
+            wav = extend_audio_and_save(wav, sr, target_duration=5.0)
+
         wav = torch.tensor(wav)
         # Extract speaker embedding
         embedding = extract_embedding(wav)
         return embedding
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         st.error(f"Error extracting features: {e}")
         return None
 
