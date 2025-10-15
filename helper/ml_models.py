@@ -2,8 +2,8 @@ import joblib
 
 
 # load model
-catboost_model = joblib.load('models/cat_model_split.joblib')
-scaler = joblib.load('models/scaler.joblib')
+catboost_model = joblib.load('models/cat_model_split_wavlm.joblib')
+scaler = joblib.load('models/scaler wavlm.joblib')
 
 def get_prediction(features):
     """

@@ -7,11 +7,6 @@ import soundfile as sf
 from helper.extract_features import generate_features
 from helper.ml_models import get_prediction
 
-feature_extractor = Wav2Vec2FeatureExtractor.from_pretrained("microsoft/wavlm-base-plus")
-model = WavLMModel.from_pretrained("microsoft/wavlm-base-plus", output_hidden_states=True)
-device = "cuda" if torch.cuda.is_available() else "cpu"
-model.to(device).eval()
-
 def extend_audio_and_save(
     y,
     sr,
